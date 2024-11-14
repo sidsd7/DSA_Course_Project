@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 using namespace std;
 
@@ -20,7 +21,7 @@ public:
 class Trie {
 public:
     TrieNode* root;
-    
+
     Trie() {
         root = new TrieNode();
     }
@@ -28,13 +29,8 @@ public:
     void insert(const string &word) {
         TrieNode* node = root;
         for (char ch : word) {
-            if (ch < 'A' || ch > 'Z') {
-                cout << "Invalid character in word: " << word << endl;
-                return; // Ignore words with invalid characters
-            }
             int index = ch - 'A';
-            if (!node->children[index])
-                node->children[index] = new TrieNode();
+            if (!node->children[index]) node->children[index] = new TrieNode();
             node = node->children[index];
         }
         node->isEndOfWord = true;
@@ -43,7 +39,6 @@ public:
     bool search(const string &word) {
         TrieNode* node = root;
         for (char ch : word) {
-            if (ch < 'A' || ch > 'Z') return false; // Reject words with invalid characters
             int index = ch - 'A';
             if (!node->children[index]) return false;
             node = node->children[index];
@@ -52,24 +47,25 @@ public:
     }
 };
 
+struct WordPosition {
+    int row;
+    int col;
+    bool horizontal;
+};
+
 class CrosswordGrid {
 private:
     vector<vector<char>> grid;
     Trie validWords;
+    unordered_map<string, WordPosition> wordPositions;
 
 public:
     CrosswordGrid() {
         grid.resize(GRID_SIZE, vector<char>(GRID_SIZE, '-'));
     }
 
-    void addWord(const string &word) {
+    void insertWordIntoTrie(const string &word) {
         validWords.insert(word);
-        if (!solvePuzzle(word)) {
-            cout << "Failed to place the word \"" << word << "\" on the grid." << endl;
-        } else {
-            cout << "Successfully placed \"" << word << "\" on the grid:" << endl;
-            displayGrid();
-        }
     }
 
     void displayGrid() {
@@ -81,7 +77,6 @@ public:
         }
     }
 
-private:
     bool isValidPlacement(int row, int col, const string &word, bool horizontal) {
         if (horizontal) {
             if (col + word.length() > GRID_SIZE) return false;
@@ -102,16 +97,21 @@ private:
             if (horizontal) grid[row][col + i] = word[i];
             else grid[row + i][col] = word[i];
         }
+        wordPositions[word] = {row, col, horizontal};
     }
 
-    void removeWord(int row, int col, const string &word, bool horizontal) {
-        for (int i = 0; i < word.length(); i++) {
-            if (horizontal) grid[row][col + i] = '-';
-            else grid[row + i][col] = '-';
+    void removeWord(const string &word) {
+        if (wordPositions.find(word) != wordPositions.end()) {
+            WordPosition pos = wordPositions[word];
+            for (int i = 0; i < word.length(); i++) {
+                if (pos.horizontal) grid[pos.row][pos.col + i] = '-';
+                else grid[pos.row + i][pos.col] = '-';
+            }
+            wordPositions.erase(word);
         }
     }
 
-    bool solvePuzzle(const string &word) {
+    bool tryPlaceWord(const string &word) {
         for (int row = 0; row < GRID_SIZE; row++) {
             for (int col = 0; col < GRID_SIZE; col++) {
                 if (isValidPlacement(row, col, word, true)) {
@@ -126,13 +126,40 @@ private:
         }
         return false;
     }
+
+    void solveCrosswordWithUserInput(const unordered_map<string, string>& cluesAndWords) {
+        for (const auto &pair : cluesAndWords) {
+            string clue = pair.first;
+            string correctWord = pair.second;
+            string userWord;
+
+            cout << "Clue: " << clue << endl;
+            while (true) {
+                cout << "Enter the word that matches this clue: ";
+                cin >> userWord;
+
+                for (char &c : userWord) c = toupper(c);
+
+                if (userWord == correctWord) {
+                    if (tryPlaceWord(correctWord)) {
+                        cout << "Successfully placed \"" << correctWord << "\" on the grid." << endl;
+                        displayGrid();
+                    } else {
+                        cout << "Failed to place the word \"" << correctWord << "\" on the grid." << endl;
+                    }
+                    break;
+                } else {
+                    cout << "Incorrect word. Please try again." << endl;
+                }
+            }
+        }
+    }
 };
 
 int main() {
     CrosswordGrid crossword;
     string word, clue;
-    char choice;
-    vector<pair<string, string>> cluesAndWords; // Vector of pairs to store clues and words
+    unordered_map<string, string> cluesAndWords;
 
     cout << "Enter sentences for the crossword puzzle (type 'n' when prompted to stop):\n";
 
@@ -140,47 +167,25 @@ int main() {
         cout << "Enter a sentence: ";
         getline(cin, clue);
 
-        // Ask for the corresponding word
         cout << "Enter a word for this sentence: ";
         cin >> word;
-        cin.ignore(); // Ignore the newline character left in the input buffer
+        cin.ignore();
 
-        // Convert the word to uppercase
         for (char &c : word) c = toupper(c);
-
-        // Add the clue and word as a pair to the vector
-        cluesAndWords.push_back(make_pair(clue, word));
+        cluesAndWords[clue] = word;
+        crossword.insertWordIntoTrie(word);
 
         cout << "Do you want to add another sentence? (y/n): ";
+        char choice;
         cin >> choice;
-        cin.ignore(); 
+        cin.ignore();
 
-        if (choice == 'n' || choice == 'N') {
-            break;
-        }
+        if (choice == 'n' || choice == 'N') break;
     }
 
-    cout << "\nAttempting to place words into the crossword grid:\n";
-    for (const auto &pair : cluesAndWords) {
-        cout << "Clue: " << pair.first << endl; 
-        
-        // Keep asking until the correct word is entered
-        while (true) {
-            cout << "Enter the word that matches this clue: ";
-            cin >> word;
-            for (char &c : word) c = toupper(c);
-
-            if (word == pair.second) {
-                crossword.addWord(word); 
-                break; // Exit the loop if the word matches
-            } else {
-                cout << "The entered word does not match the original. Please try again." << endl;
-            }
-        }
-    }
-
-    cout << "Final crossword grid:" << endl;
-    crossword.displayGrid();
+    cout << "\nAttempting to solve the crossword puzzle with user input:\n";
+    crossword.solveCrosswordWithUserInput(cluesAndWords);
 
     return 0;
 }
+
